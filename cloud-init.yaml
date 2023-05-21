@@ -1,0 +1,12 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+packages:
+  - apache2
+  - nginx
+runcmd:
+  - a2enmod ssl
+  - a2ensite default-ssl
+  - systemctl restart apache2
+  - systemctl start nginx
+  - systemctl enable nginx

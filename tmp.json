@@ -1,0 +1,261 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "vmName": { "type": "string" },
+    "adminUsername": { "type": "string" },
+    "adminPassword": { "type": "securestring" },
+    "ubuntuOSVersion": { "type": "string" },
+    "networkInterfaceName": { "type": "string" },
+    "networkSecurityGroupName": { "type": "string" },
+    "virtualNetworkName": { "type": "string" },
+    "vnetAddressPrefix": { "type": "string" },
+    "subnetName": { "type": "string" },
+    "subnetPrefix": { "type": "string" },
+    "publicIpAddressName": { "type": "string" },
+    "bastionHostName": { "type": "string" },
+    "bastionSubnetPrefix": { "type": "string" },
+    "firewallName": { "type": "string" },
+    "firewallPublicIpName": { "type": "string" },
+    "firewallSubnetPrefix": { "type": "string" },
+    "routeTableName": { "type": "string" },
+    "routeName": { "type": "string" },
+    "windowsOSVersion": { "type": "string" }
+  },
+  "variables": {
+    "subnetRef": "[concat(resourceId('Microsoft.Network/virtualNetworks', parameters('virtualNetworkName')), '/subnets/', parameters('subnetName'))]",
+    "storageAccountName": "yourstorageaccountname",
+    "nicName": "yournetworkinterfacename"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2018-07-01",
+      "name": "[variables('storageAccountName')]",
+      "location": "[resourceGroup().location]",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "kind": "Storage",
+      "properties": {}
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines",
+      "apiVersion": "2018-10-01",
+      "name": "[parameters('vmName')]",
+      "location": "[resourceGroup().location]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]",
+        "[resourceId('Microsoft.Network/networkInterfaces', variables('nicName'))]"
+      ],
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "Standard_DS1_v2"
+        },
+        "osProfile": {
+          "computerName": "[parameters('vmName')]",
+          "adminUsername": "[parameters('adminUsername')]",
+          "adminPassword": "[parameters('adminPassword')]"
+        },
+        "storageProfile": {
+          "imageReference": {
+            "publisher": "Canonical",
+            "offer": "UbuntuServer",
+            "sku": "[parameters('ubuntuOSVersion')]",
+            "version": "latest"
+          },
+          "osDisk": {
+            "name": "osdisk",
+            "vhd": {
+              "uri": "[concat(reference(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))).primaryEndpoints.blob, 'vhds/osdisk.vhd')]"
+            },
+            "caching": "ReadWrite",
+            "createOption": "FromImage"
+          },
+          "dataDisks": []
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('nicName'))]"
+            }
+          ]
+        },
+        "diagnosticsProfile": {
+          "bootDiagnostics": {
+            "enabled": "true",
+            "storageUri": "[concat(reference(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))).primaryEndpoints.blob)]"
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Network/networkInterfaces",
+      "apiVersion": "2018-10-01",
+      "name": "[variables('nicName')]",
+      "location": "[resourceGroup().location]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('networkSecurityGroupName'))]",
+        "[resourceId('Microsoft.Network/publicIpAddresses', parameters('publicIpAddressName'))]"
+      ],
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "subnet": {
+                "id": "[variables('subnetRef')]"
+              },
+              "privateIPAllocationMethod": "Dynamic",
+              "publicIpAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIpAddresses', parameters('publicIpAddressName'))]"
+              }
+            }
+          }
+        ],
+        "networkSecurityGroup": {
+          "id": "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('networkSecurityGroupName'))]"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "2018-10-01",
+      "name": "[parameters('networkSecurityGroupName')]",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "securityRules": [
+          {
+            "name": "AllowHttpAndHttps",
+            "properties": {
+              "protocol": "*",
+              "sourcePortRange": "*",
+              "destinationPortRange": "80,443",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
+              "access": "Allow",
+              "priority": 100,
+              "direction": "Inbound"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/publicIpAddresses",
+      "apiVersion": "2018-10-01",
+      "name": "[parameters('publicIpAddressName')]",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "publicIpAllocationMethod": "Dynamic",
+        "dnsSettings": {
+          "domainNameLabel": "[parameters('publicIpAddressName')]"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2018-10-01",
+      "name": "[parameters('virtualNetworkName')]",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "[parameters('vnetAddressPrefix')]"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "[parameters('subnetName')]",
+            "properties": {
+              "addressPrefix": "[parameters('subnetPrefix')]"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworks/subnets",
+      "apiVersion": "2018-10-01",
+      "name": "[concat(parameters('virtualNetworkName'), '/', parameters('subnetName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', parameters('virtualNetworkName'))]"
+      ],
+      "properties": {
+        "addressPrefix": "[parameters('subnetPrefix')]"
+      }
+    },
+    {
+      "type": "Microsoft.Network/publicIpAddresses",
+      "apiVersion": "2018-10-01",
+      "name": "[parameters('firewallPublicIpName')]",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "publicIpAllocationMethod": "Dynamic"
+      }
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworks/subnets",
+      "apiVersion": "2018-10-01",
+      "name": "[concat(parameters('virtualNetworkName'), '/', 'AzureBastionSubnet')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', parameters('virtualNetworkName'))]"
+      ],
+      "properties": {
+        "addressPrefix": "[parameters('bastionSubnetPrefix')]"
+      }
+    },
+    {
+      "type": "Microsoft.Network/publicIpPrefixes",
+      "apiVersion": "2020-06-01",
+      "name": "[parameters('firewallName')]",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "publicIpPrefixVersion": "IPv4",
+        "prefixLength": 29
+      }
+    },
+    {
+      "type": "Microsoft.Network/publicIPPrefixes/firewallIpConfigs",
+      "apiVersion": "2020-06-01",
+      "name": "[concat(parameters('firewallName'), '/firewallIpConfig')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/publicIpPrefixes', parameters('firewallName'))]"
+      ],
+      "properties": {
+        "subnet": {
+          "id": "[concat(parameters('virtualNetworkName'), '/AzureBastionSubnet')]"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Network/routeTables",
+      "apiVersion": "2018-10-01",
+      "name": "[parameters('routeTableName')]",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "disableBgpRoutePropagation": true,
+        "routes": [
+          {
+            "name": "[parameters('routeName')]",
+            "properties": {
+              "addressPrefix": "0.0.0.0/0",
+              "nextHopType": "VirtualAppliance",
+              "nextHopIpAddress": "[reference(resourceId('Microsoft.Network/publicIPPrefixes', parameters('firewallName'))).ipPrefix]"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "outputs": {
+    "adminUsername": {
+      "type": "string",
+      "value": "[parameters('adminUsername')]"
+    },
+    "adminPassword": {
+      "type": "securestring",
+      "value": "[parameters('adminPassword')]"
+    }
+  }
+}
